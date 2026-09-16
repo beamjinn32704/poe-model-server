@@ -1,23 +1,31 @@
 import React from 'react';
-import { ApolloClient, InMemoryCache, ApolloProvider, split, HttpLink } from '@apollo/client';
-import { GraphQLWsLink } from '@apollo/client/link/subscriptions';
+import {
+  ApolloClient,
+  InMemoryCache,
+  ApolloProvider,
+  split,
+  HttpLink
+} from '@apollo/client';
 import { getMainDefinition } from '@apollo/client/utilities';
+import { GraphQLWsLink } from '@apollo/client/link/subscriptions';
 import { createClient } from 'graphql-ws';
-import DeviceMonitor from './components/DeviceMonitor';
+import { DeviceMonitor } from './components/DeviceMonitor.js';
 
-// Create an HTTP link for queries/mutations
+const isDev = window.location.port === '3000';
+const backendHost = isDev ? `${window.location.hostname}:5000` : window.location.host;
+const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+const httpProtocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
+
 const httpLink = new HttpLink({
-  uri: '/graphql',
+  uri: `${httpProtocol}//${backendHost}/graphql`,
 });
 
-// Create a WebSocket link for subscriptions
 const wsLink = new GraphQLWsLink(
   createClient({
-    url: `ws://${window.location.host}/`,
-  }),
+    url: `${wsProtocol}//${backendHost}/`,
+  })
 );
 
-// Split links based on operation type
 const splitLink = split(
   ({ query }) => {
     const definition = getMainDefinition(query);
@@ -27,41 +35,34 @@ const splitLink = split(
     );
   },
   wsLink,
-  httpLink,
+  httpLink
 );
 
-// Create Apollo Client
 const client = new ApolloClient({
   link: splitLink,
-  cache: new InMemoryCache({
-    typePolicies: {
-      Model: {
-        keyFields: [] // Singleton
-      }
-    }
-  }),
+  cache: new InMemoryCache(),
 });
 
-const device_count = 4
+export default function App() {
+  const deviceCount = 4;
+  const deviceIds = Array.from({ length: deviceCount }, (_, idx) => idx);
 
-function App() {
   return (
     <ApolloProvider client={client}>
-      <div className="container">
-            <div className="header">
-              <div className="menu-icon">&#9776;</div>
-              <h1>Soteria Room Monitoring Status</h1>
-            </div>
-            <div className="rooms">
-              {[...Array.from({length: device_count}).keys()].map(i => <DeviceMonitor deviceId={i} key={i}/>)}
-            </div>  
-          {/* <!-- Add Room Dynamically Section --> */}
-          <div className  ="add-room">
-            <button> + Add New Room</button>
-          </div>  ` `
-      </div>
+      <main style={{ padding: '24px', fontFamily: 'sans-serif' }}>
+        <h1 style={{ marginBottom: '24px' }}>Emergency Monitoring System</h1>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+            gap: '16px',
+          }}
+        >
+          {deviceIds.map((id) => (
+            <DeviceMonitor key={id} deviceId={id} />
+          ))}
+        </div>
+      </main>
     </ApolloProvider>
   );
 }
-
-export default App;

@@ -1,5 +1,5 @@
 import React from 'react';
-import { gql, useQuery } from '@apollo/client';
+import { gql, useQuery, useSubscription } from '@apollo/client';
 
 const GET_DEVICE = gql`
   query GetDevice($id: Int!) {
@@ -18,8 +18,8 @@ const GET_DEVICE = gql`
   }
 `;
 
-const SUB_DEVICE = gql`
-  subscription MySubscription($id: Int!) {
+const DEVICE_CHANGED_SUBSCRIPTION = gql`
+  subscription OnDeviceChanged($id: Int!) {
     deviceChanged(id: $id) {
       danger
       occupied
@@ -33,90 +33,74 @@ const SUB_DEVICE = gql`
   }
 `;
 
-function DeviceMonitor({ deviceId }) {
-  const { loading, error, data, subscribeToMore } = useQuery(GET_DEVICE, {
+export function DeviceMonitor({ deviceId }) {
+  const { data: initialData, loading, error } = useQuery(GET_DEVICE, {
     variables: { id: deviceId },
-    // pollInterval: 1000, // Poll every second for updates
   });
 
-  React.useEffect(() => {
-    const unsubscribe = subscribeToMore({
-      document: SUB_DEVICE,
-      variables: { id: deviceId },
-      updateQuery: (prev, { subscriptionData }) => {
-        if (!subscriptionData.data) return prev;
-        return Object.assign({}, prev, {model: Object.assign({}, prev.model, {getDevice: subscriptionData.data.deviceChanged})});
-      },
-    });
+  const { data: subData } = useSubscription(DEVICE_CHANGED_SUBSCRIPTION, {
+    variables: { id: deviceId },
+  });
 
-    return () => {
-      unsubscribe();
-    };
-  }, [deviceId, subscribeToMore]);
+  if (loading) {
+    return (
+      <div style={cardBaseStyle}>
+        <p>Loading device {deviceId}...</p>
+      </div>
+    );
+  }
 
-  if (loading) return <p>Loading...</p>;
-  if (error) return <p>Error: {error.message}</p>;
+  if (error) {
+    return (
+      <div style={{ ...cardBaseStyle, borderColor: '#d32f2f' }}>
+        <p style={{ color: '#d32f2f' }}>Error loading device {deviceId}</p>
+      </div>
+    );
+  }
 
-  const device = data.model.getDevice;
-  if (!device) return <p>Device {deviceId} not found</p>;
+  const device = subData?.deviceChanged ?? initialData?.model?.getDevice;
+
+  if (!device) {
+    return (
+      <div style={cardBaseStyle}>
+        <p>Device {deviceId} not found.</p>
+      </div>
+    );
+  }
+
+  const cardStyle = {
+    ...cardBaseStyle,
+    borderColor: device.danger ? '#d32f2f' : '#ccc',
+    backgroundColor: device.danger ? '#fff5f5' : '#ffffff',
+  };
 
   return (
-    <div className="room-card alert">
-        <h2>Room {deviceId+1}</h2>
-        { device.danger
-            ? <div className="status alert-text"><img src="../UI_Icons/Red_Alert_Icon.png" width="5px" alt="" aria-hidden="true"/> ALERT</div>
-            : <div className="status normal-text"><img src="../UI_Icons/Green_Alert_Icon.png" width="5px" alt="" aria-hidden="true"/>  NORMAL</div>}
-        
-        <div className="info">
-          <p>Smoke Detected: <strong>{device.smokeDetected === null ? 'Unknown' : device.smokeDetected ? 'Yes' : 'No'}</strong></p>
-          <p>CO / Gas: <strong className={device.airQuality > 200 ? 'alert-text' : ''}>{device.airQuality !== null ? `${device.airQuality.toFixed(0)} ppm` : 'N/A'}</strong></p>
-          <p><img src="../UI_Icons/People_Count_Icon.png" width="20px" alt="" aria-hidden="true"/> Occupied: {device.occupied === null ? 'Unknown' : device.occupied ? 'Yes' : 'No'}</p>
-          <p><img src="../UI_Icons/Temperature_Icon.png" width="10px" alt="" aria-hidden="true"/> Temperature: {device.temperature !== null ? `${device.temperature}°C` : 'N/A'}</p>
-          <p><img src="../UI_Icons/Humidity_Icon.png" width="10px" alt="" aria-hidden="true"/> Humidity: {device.humidity !== null ? `${device.humidity}%` : 'N/A'}</p>
-          <p><img src="../UI_Icons/Emergency_Door_Icon.png" width="20px" alt="" aria-hidden="true"/> State: <span className={`evac-state ${device.evacState}`}>{device.evacState === 'EVAC' ? 'Evacuating' : "Safe"}</span></p>
-        </div>
-      </div>
-    /* <div className="device-monitor">
-      <h2>Device {deviceId}</h2>
-      <div className={`status ${device.danger ? 'danger' : 'normal'}`}>
-        {device.danger ? '⚠️ DANGER' : '✓ Normal'}
-      </div>
-      
-      <div className="metrics">
-        <div className="metric">
-          <label>Occupied:</label>
-          <span>{device.occupied === null ? 'Unknown' : device.occupied ? 'Yes' : 'No'}</span>
-        </div>
-        
-        <div className="metric">
-          <label>Temperature:</label>
-          <span>{device.temperature !== null ? `${device.temperature}°` : 'N/A'}</span>
-        </div>
-        
-        <div className="metric">
-          <label>Humidity:</label>
-          <span>{device.humidity !== null ? `${device.humidity}%` : 'N/A'}</span>
-        </div>
-        
-        <div className="metric">
-          <label>Air Quality:</label>
-          <span>{device.airQuality !== null ? device.airQuality : 'N/A'}</span>
-        </div>
-      </div>
-      
-      <div className="states">
-        <div className="state">
-          <label>LED State:</label>
-          <span className={`led-state ${device.ledState}`}>{device.ledState}</span>
-        </div>
-        
-        <div className="state">
-          <label>Evacuation State:</label>
-          <span className={`evac-state ${device.evacState}`}>{device.evacState}</span>
-        </div>
-      </div>
-    </div> */
+    <div style={cardStyle}>
+      <h3 style={{ marginTop: 0, borderBottom: '1px solid #eee', paddingBottom: '8px' }}>
+        Room / Device {deviceId}
+      </h3>
+      <p>
+        Evacuation State: <strong>{device.evacState}</strong>
+      </p>
+      <p>
+        LED Directive: <strong>{device.ledState}</strong>
+      </p>
+      <p>
+        Hazard Status: <strong style={{ color: device.danger ? '#d32f2f' : '#2e7d32' }}>{device.danger ? 'DANGER' : 'CLEAR'}</strong>
+      </p>
+      <p>Temperature: {device.temperature !== null ? `${device.temperature}°C` : 'N/A'}</p>
+      <p>Humidity: {device.humidity !== null ? `${device.humidity}%` : 'N/A'}</p>
+      <p>Air Quality: {device.airQuality !== null ? device.airQuality : 'N/A'}</p>
+      <p>Smoke Detected: {device.smokeDetected ? 'Yes' : 'No'}</p>
+      <p>Occupancy: {device.occupied ? 'Occupied' : 'Vacant'}</p>
+    </div>
   );
 }
 
-export default DeviceMonitor;
+const cardBaseStyle = {
+  border: '1px solid #ccc',
+  borderRadius: '8px',
+  padding: '16px',
+  boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
+  transition: 'all 0.2s ease-in-out',
+};

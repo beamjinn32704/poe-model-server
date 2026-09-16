@@ -1,8 +1,9 @@
 import express from 'express';
+import cors from 'cors';
 import { createHandler } from 'graphql-http/lib/use/express';
 import { WebSocketServer } from 'ws';
 import { useServer } from "graphql-ws/use/ws";
-import schema from './schema.js'
+import schema from './schema.js';
 import { printSchema } from 'graphql';
 import process from 'node:process';
 
@@ -11,10 +12,10 @@ if (process.env.NODE_ENV != 'production')
 
 const app = express();
 
-app.use(express.json())
-app.use(express.urlencoded({ extended: true }))
-
-app.use('/graphql', createHandler({schema}));
+app.use(cors());
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.all('/graphql', createHandler({schema}));
 
 // Serve the GraphiQL IDE.
 if (process.env.NODE_ENV != 'production')
@@ -28,5 +29,4 @@ console.log(printSchema(schema));
 console.log(server.address());
 
 const wsServer = new WebSocketServer({server, path: '/'});
-
 useServer({schema}, wsServer);
